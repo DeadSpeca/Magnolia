@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.magnolia.app"
@@ -22,7 +24,10 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.magnolia.app",
-      "permissions": ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"]
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png",
@@ -37,6 +42,12 @@
         }
       ]
     ],
-    "scheme": "magnolia"
+    "scheme": "magnolia",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d9b13d90-8157-423c-a9a8-8340aaebc213"
+      }
+    }
   }
 }

@@ -159,7 +159,6 @@ export default function SettingsScreen() {
                 : "Purple"
             }
             left={(props) => <List.Icon {...props} icon="palette" />}
-            disabled={appSettings.libraryColorScheme === "monochrome"}
           >
             <View style={styles.colorPickerContainer}>
               {(Object.keys(ACCENT_COLORS) as AccentColor[]).map((colorKey) => (
