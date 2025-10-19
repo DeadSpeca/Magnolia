@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "Reader",
-    "slug": "reader-app",
+    "name": "Magnolia",
+    "slug": "magnolia",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -14,14 +14,14 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.reader.app"
+      "bundleIdentifier": "com.magnolia.app"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.reader.app",
+      "package": "com.magnolia.app",
       "permissions": ["READ_EXTERNAL_STORAGE", "WRITE_EXTERNAL_STORAGE"]
     },
     "web": {
@@ -37,6 +37,6 @@
         }
       ]
     ],
-    "scheme": "reader-app"
+    "scheme": "magnolia"
   }
 }
