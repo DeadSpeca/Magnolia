@@ -9,13 +9,20 @@ import {
   TextInput,
   Dimensions,
   GestureResponderEvent,
+  AppState,
+  AppStateStatus,
 } from "react-native";
 import { Text, IconButton, useTheme, Button } from "react-native-paper";
 import { StatusBar } from "expo-status-bar";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Slider from "@react-native-community/slider";
 import { Book, BookContent, ReadingMode, READER_THEMES } from "../../src/types";
-import { getBookById, updateBookProgress } from "../../src/lib/storage";
+import {
+  getBookById,
+  updateBookProgress,
+  getCachedBookContent,
+  setCachedBookContent,
+} from "../../src/lib/storage";
 import { parseBookFile } from "../../src/lib/parsers";
 import { ReaderView } from "../../src/components";
 import { useReaderSettings } from "../../src/context";
@@ -35,8 +42,6 @@ export default function ReaderScreen() {
   const [bgColorInput, setBgColorInput] = useState(settings.backgroundColor);
   const [textColorInput, setTextColorInput] = useState(settings.textColor);
 
-  const saveIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
   // Common colors for quick selection
   const commonColors = [
     "#FFFFFF",
@@ -55,23 +60,42 @@ export default function ReaderScreen() {
 
   useEffect(() => {
     loadBook();
-    return () => {
-      if (saveIntervalRef.current) {
-        clearInterval(saveIntervalRef.current);
-      }
-    };
   }, [id]);
 
+  // Continuous debounced progress saving - triggers on position change
   useEffect(() => {
-    if (book && content) {
-      saveIntervalRef.current = setInterval(() => {
-        saveProgress();
-      }, 10000);
+    if (book && content && currentPosition > 0) {
+      // Debounced save - only saves after user stops scrolling for 2 seconds
+      updateBookProgress(book.id, currentPosition, content.text.length, false);
     }
-    return () => {
-      if (saveIntervalRef.current) {
-        clearInterval(saveIntervalRef.current);
+    // Only depend on currentPosition to avoid infinite loops
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPosition]);
+
+  // Save position when app goes to background
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState: AppStateStatus) => {
+      // When app goes to background or inactive, save immediately
+      if (nextAppState === "background" || nextAppState === "inactive") {
+        if (book && content && currentPosition >= 0) {
+          updateBookProgress(
+            book.id,
+            currentPosition,
+            content.text.length,
+            true
+          );
+        }
       }
+    };
+
+    const subscription = AppState.addEventListener(
+      "change",
+      handleAppStateChange
+    );
+
+    // Cleanup
+    return () => {
+      subscription.remove();
     };
   }, [book, content, currentPosition]);
 
@@ -86,21 +110,44 @@ export default function ReaderScreen() {
       }
 
       setBook(loadedBook);
-      setCurrentPosition(loadedBook.currentPosition);
+      // Load saved position immediately
+      setCurrentPosition(loadedBook.currentPosition || 0);
 
-      const parsedContent = await parseBookFile(
-        loadedBook.filePath,
-        loadedBook.format
-      );
+      // Try to get cached content first (instant - in memory only!)
+      let parsedContent = getCachedBookContent(loadedBook.id);
+
+      if (!parsedContent) {
+        // Parse content if not cached
+        parsedContent = await parseBookFile(
+          loadedBook.filePath,
+          loadedBook.format
+        );
+        // Cache it in memory for next time (instant!)
+        setCachedBookContent(loadedBook.id, parsedContent);
+      }
+
       setContent(parsedContent);
 
+      // Update metadata if available
       if (parsedContent.metadata.title !== "Unknown") {
         loadedBook.title = parsedContent.metadata.title;
       }
       if (parsedContent.metadata.author !== "Unknown") {
         loadedBook.author = parsedContent.metadata.author;
       }
-      loadedBook.totalLength = parsedContent.text.length;
+
+      // Update total length and save
+      const totalLength = parsedContent.text.length;
+      loadedBook.totalLength = totalLength;
+
+      // Mark as opened (immediate save on open)
+      loadedBook.lastOpened = Date.now();
+      await updateBookProgress(
+        loadedBook.id,
+        loadedBook.currentPosition || 0,
+        totalLength,
+        true // immediate save
+      );
     } catch (error) {
       console.error("Error loading book:", error);
       Alert.alert("Error", "Failed to load book content");
@@ -110,22 +157,20 @@ export default function ReaderScreen() {
     }
   };
 
-  const saveProgress = async () => {
-    if (book && content) {
-      try {
-        await updateBookProgress(book.id, currentPosition, content.text.length);
-      } catch (error) {
-        console.error("Error saving progress:", error);
-      }
-    }
-  };
-
   const handlePositionChange = (position: number) => {
     setCurrentPosition(position);
   };
 
   const handleClose = async () => {
-    await saveProgress();
+    // Immediate save on close (no debounce)
+    if (book && content) {
+      await updateBookProgress(
+        book.id,
+        currentPosition,
+        content.text.length,
+        true
+      );
+    }
     router.back();
   };
 
@@ -154,7 +199,9 @@ export default function ReaderScreen() {
       >
         <StatusBar hidden />
         <View style={styles.loadingContainer}>
-          <Text style={{ color: settings.textColor }}>Loading...</Text>
+          <Text style={[styles.loadingText, { color: settings.textColor }]}>
+            Loading...
+          </Text>
         </View>
       </View>
     );
@@ -512,6 +559,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
+  },
+  loadingText: {
+    marginTop: 24,
+    fontSize: 16,
+    opacity: 0.8,
   },
   topBar: {
     position: "absolute",
