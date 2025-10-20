@@ -9,13 +9,14 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
 } from "react-native";
-import { ReadingMode, ReaderSettings } from "../types";
+import { ReadingMode, ReaderSettings, BookMetadata } from "../types";
 
 interface ReaderViewProps {
   content: string;
   settings: ReaderSettings;
   initialPosition: number;
   onPositionChange: (position: number) => void;
+  bookMetadata?: BookMetadata;
 }
 
 export function ReaderView({
@@ -23,11 +24,13 @@ export function ReaderView({
   settings,
   initialPosition,
   onPositionChange,
+  bookMetadata,
 }: ReaderViewProps) {
   const [currentPage, setCurrentPage] = useState(0);
   const [pages, setPages] = useState<string[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
   const flatListRef = useRef<FlatList>(null);
+  const hasScrolledToInitial = useRef(false);
 
   useEffect(() => {
     if (settings.readingMode === ReadingMode.PAGINATED) {
@@ -38,6 +41,23 @@ export function ReaderView({
         (initialPosition / content.length) * paginatedPages.length
       );
       setCurrentPage(initialPage);
+    } else {
+      // For scroll mode, scroll to initial position after content is rendered
+      if (
+        !hasScrolledToInitial.current &&
+        scrollViewRef.current &&
+        initialPosition > 0
+      ) {
+        setTimeout(() => {
+          const scrollPercentage = initialPosition / content.length;
+          const contentHeight = content.length * 0.5; // Approximate content height
+          scrollViewRef.current?.scrollTo({
+            y: contentHeight * scrollPercentage,
+            animated: false,
+          });
+          hasScrolledToInitial.current = true;
+        }, 100);
+      }
     }
   }, [content, settings.readingMode, settings.fontSize, settings.lineHeight]);
 
@@ -83,17 +103,148 @@ export function ReaderView({
   const handleScroll = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
 
-    const position = Math.floor(
-      (contentOffset.y / contentSize.height) * content.length
-    );
-
-    onPositionChange(position);
+    // Prevent division by zero and ensure valid position calculation
+    if (contentSize.height > 0) {
+      const scrollPercentage =
+        contentOffset.y / (contentSize.height - layoutMeasurement.height);
+      const clampedPercentage = Math.max(0, Math.min(1, scrollPercentage));
+      const position = Math.floor(clampedPercentage * content.length);
+      onPositionChange(position);
+    }
   };
 
   const handlePageChange = (index: number) => {
     setCurrentPage(index);
     const position = Math.floor((index / pages.length) * content.length);
     onPositionChange(position);
+  };
+
+  // Function to parse and render formatted text
+  const renderFormattedText = (text: string, textStyle: any) => {
+    // Match **bold**, *italic*, ***bold italic***
+    const parts: Array<{ text: string; bold: boolean; italic: boolean }> = [];
+    let currentIndex = 0;
+
+    // Regex to match formatting: ***text*** or **text** or *text*
+    const formatRegex = /(\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*)/g;
+    let match;
+
+    while ((match = formatRegex.exec(text)) !== null) {
+      // Add text before the match
+      if (match.index > currentIndex) {
+        parts.push({
+          text: text.substring(currentIndex, match.index),
+          bold: false,
+          italic: false,
+        });
+      }
+
+      const matchedText = match[0];
+      if (matchedText.startsWith("***") && matchedText.endsWith("***")) {
+        // Bold and italic
+        parts.push({
+          text: matchedText.slice(3, -3),
+          bold: true,
+          italic: true,
+        });
+      } else if (matchedText.startsWith("**") && matchedText.endsWith("**")) {
+        // Bold
+        parts.push({
+          text: matchedText.slice(2, -2),
+          bold: true,
+          italic: false,
+        });
+      } else if (matchedText.startsWith("*") && matchedText.endsWith("*")) {
+        // Italic
+        parts.push({
+          text: matchedText.slice(1, -1),
+          bold: false,
+          italic: true,
+        });
+      }
+
+      currentIndex = match.index + matchedText.length;
+    }
+
+    // Add remaining text
+    if (currentIndex < text.length) {
+      parts.push({
+        text: text.substring(currentIndex),
+        bold: false,
+        italic: false,
+      });
+    }
+
+    // If no formatting found, return plain text
+    if (parts.length === 0) {
+      return <Text style={textStyle}>{text}</Text>;
+    }
+
+    return (
+      <Text style={textStyle}>
+        {parts.map((part, index) => (
+          <Text
+            key={index}
+            style={{
+              fontWeight: part.bold ? "bold" : "normal",
+              fontStyle: part.italic ? "italic" : "normal",
+            }}
+          >
+            {part.text}
+          </Text>
+        ))}
+      </Text>
+    );
+  };
+
+  const renderBookTitle = () => {
+    if (!bookMetadata) return null;
+
+    return (
+      <View style={styles.titleContainer}>
+        <Text
+          style={[
+            styles.bookTitle,
+            {
+              color: settings.textColor,
+              fontSize: settings.fontSize * 2,
+            },
+          ]}
+        >
+          {bookMetadata.title}
+        </Text>
+        {bookMetadata.author && bookMetadata.author !== "Unknown" && (
+          <Text
+            style={[
+              styles.bookAuthor,
+              {
+                color: settings.textColor,
+                fontSize: settings.fontSize * 1.2,
+              },
+            ]}
+          >
+            by {bookMetadata.author}
+          </Text>
+        )}
+        {bookMetadata.description && (
+          <Text
+            style={[
+              styles.bookDescription,
+              {
+                color: settings.textColor,
+                fontSize: settings.fontSize * 0.9,
+                opacity: 0.8,
+              },
+            ]}
+          >
+            {bookMetadata.description}
+          </Text>
+        )}
+        <View
+          style={[styles.divider, { backgroundColor: settings.textColor }]}
+        />
+      </View>
+    );
   };
 
   const textStyle = {
@@ -154,10 +305,13 @@ export function ReaderView({
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
-      scrollEventThrottle={400}
+      scrollEventThrottle={16}
+      removeClippedSubviews={false}
+      nestedScrollEnabled={true}
     >
       <View style={styles.textContainer}>
-        <Text style={[styles.text, textStyle]}>{content}</Text>
+        {renderBookTitle()}
+        {renderFormattedText(content, [styles.text, textStyle])}
       </View>
     </ScrollView>
   );
@@ -192,5 +346,33 @@ const styles = StyleSheet.create({
   pageNumber: {
     fontSize: 12,
     color: "#FFFFFF",
+  },
+  titleContainer: {
+    marginBottom: 32,
+    alignItems: "center",
+  },
+  bookTitle: {
+    fontWeight: "bold",
+    textAlign: "center",
+    marginBottom: 12,
+    letterSpacing: 0.5,
+  },
+  bookAuthor: {
+    fontStyle: "italic",
+    textAlign: "center",
+    marginBottom: 16,
+    opacity: 0.9,
+  },
+  bookDescription: {
+    textAlign: "center",
+    marginBottom: 20,
+    paddingHorizontal: 16,
+    lineHeight: 22,
+  },
+  divider: {
+    width: 100,
+    height: 2,
+    marginTop: 8,
+    opacity: 0.3,
   },
 });

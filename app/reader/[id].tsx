@@ -181,6 +181,7 @@ export default function ReaderScreen() {
           settings={settings}
           initialPosition={currentPosition}
           onPositionChange={handlePositionChange}
+          bookMetadata={content.metadata}
         />
       </TouchableOpacity>
 
