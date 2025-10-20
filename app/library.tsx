@@ -236,9 +236,11 @@ export default function LibraryScreen() {
       />
       <FAB
         icon="plus"
-        style={[styles.fab, { backgroundColor: theme.colors.primary }]}
+        style={styles.fab}
+        color="#FFFFFF"
         onPress={pickDocument}
         label="Add Book"
+        variant="primary"
       />
     </SafeAreaView>
   );
@@ -299,5 +301,13 @@ const styles = StyleSheet.create({
     position: "absolute",
     right: 16,
     bottom: 16,
+    elevation: 8,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 4.65,
   },
 });

@@ -24,6 +24,11 @@ import {
   setCachedBookContent,
 } from "../../src/lib/storage";
 import { parseBookFile } from "../../src/lib/parsers";
+import {
+  loadBookChunk,
+  loadFullBook,
+  shouldUseChunkedLoading,
+} from "../../src/lib/parsers/chunkLoader";
 import { ReaderView } from "../../src/components";
 import { useReaderSettings } from "../../src/context";
 
@@ -36,6 +41,7 @@ export default function ReaderScreen() {
   const [book, setBook] = useState<Book | null>(null);
   const [content, setContent] = useState<BookContent | null>(null);
   const [loading, setLoading] = useState(true);
+  const [loadingFullContent, setLoadingFullContent] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [currentPosition, setCurrentPosition] = useState(0);
@@ -117,7 +123,72 @@ export default function ReaderScreen() {
       let parsedContent = getCachedBookContent(loadedBook.id);
 
       if (!parsedContent) {
-        // Parse content if not cached
+        // Check if we should use chunked loading for large books
+        const useChunkedLoading = shouldUseChunkedLoading(loadedBook.format);
+
+        if (useChunkedLoading && loadedBook.currentPosition > 0) {
+          // Load initial chunk for fast startup
+          console.log(
+            `Loading chunk around position ${loadedBook.currentPosition}...`
+          );
+          const chunkContent = await loadBookChunk(
+            loadedBook.filePath,
+            loadedBook.format,
+            loadedBook.currentPosition
+          );
+
+          // Set the chunk content immediately for fast rendering
+          setContent(chunkContent);
+          setLoading(false); // User can start reading now!
+
+          // Load full content in background
+          console.log("Loading full book in background...");
+          setLoadingFullContent(true);
+
+          // Use setTimeout to ensure UI is responsive
+          setTimeout(async () => {
+            try {
+              const fullContent = await loadFullBook(
+                loadedBook.filePath,
+                loadedBook.format
+              );
+
+              // Cache the full content
+              setCachedBookContent(loadedBook.id, fullContent);
+
+              // Update to full content
+              setContent(fullContent);
+
+              // Update metadata if available
+              if (fullContent.metadata.title !== "Unknown") {
+                loadedBook.title = fullContent.metadata.title;
+              }
+              if (fullContent.metadata.author !== "Unknown") {
+                loadedBook.author = fullContent.metadata.author;
+              }
+
+              // Update total length
+              loadedBook.totalLength = fullContent.text.length;
+              await updateBookProgress(
+                loadedBook.id,
+                loadedBook.currentPosition || 0,
+                fullContent.text.length,
+                true
+              );
+
+              console.log("Full book loaded successfully");
+            } catch (bgError) {
+              console.error("Error loading full book in background:", bgError);
+              // Keep using chunk content if full load fails
+            } finally {
+              setLoadingFullContent(false);
+            }
+          }, 100);
+
+          return; // Exit early, background loading will continue
+        }
+
+        // Standard loading for small books or non-txt formats
         parsedContent = await parseBookFile(
           loadedBook.filePath,
           loadedBook.format
@@ -243,9 +314,16 @@ export default function ReaderScreen() {
                 onPress={handleClose}
                 style={styles.backButton}
               />
-              <Text style={styles.topBarTitle} numberOfLines={1}>
-                {book.title}
-              </Text>
+              <View style={styles.titleContainer}>
+                <Text style={styles.topBarTitle} numberOfLines={1}>
+                  {book.title}
+                </Text>
+                {loadingFullContent && (
+                  <Text style={styles.loadingIndicator}>
+                    Loading full book...
+                  </Text>
+                )}
+              </View>
             </View>
             <IconButton
               icon="cog"
@@ -585,11 +663,19 @@ const styles = StyleSheet.create({
   backButton: {
     margin: 0,
   },
+  titleContainer: {
+    flex: 1,
+  },
   topBarTitle: {
     color: "#FFFFFF",
     fontSize: 16,
     fontWeight: "600",
-    flex: 1,
+  },
+  loadingIndicator: {
+    color: "#FFFFFF",
+    fontSize: 11,
+    opacity: 0.7,
+    marginTop: 2,
   },
   bottomBar: {
     position: "absolute",

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import {
   StyleSheet,
   ScrollView,
@@ -48,6 +48,7 @@ export function ReaderView({
         scrollViewRef.current &&
         initialPosition > 0
       ) {
+        // Reduced timeout for faster initial scroll
         setTimeout(() => {
           const scrollPercentage = initialPosition / content.length;
           const contentHeight = content.length * 0.5; // Approximate content height
@@ -56,7 +57,7 @@ export function ReaderView({
             animated: false,
           });
           hasScrolledToInitial.current = true;
-        }, 100);
+        }, 50); // Reduced from 100ms to 50ms
       }
     }
   }, [content, settings.readingMode, settings.fontSize, settings.lineHeight]);
@@ -305,13 +306,13 @@ export function ReaderView({
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
       onScroll={handleScroll}
-      scrollEventThrottle={16}
-      removeClippedSubviews={false}
-      nestedScrollEnabled={true}
+      scrollEventThrottle={400}
+      removeClippedSubviews={true}
+      nestedScrollEnabled={false}
     >
       <View style={styles.textContainer}>
         {renderBookTitle()}
-        {renderFormattedText(content, [styles.text, textStyle])}
+        <Text style={[styles.text, textStyle]}>{content}</Text>
       </View>
     </ScrollView>
   );

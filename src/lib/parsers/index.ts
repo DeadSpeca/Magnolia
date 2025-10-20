@@ -22,4 +22,4 @@ export async function parseBookFile(
 export * from "./txtParser";
 export * from "./fb2Parser";
 export * from "./epubParser";
-
+export * from "./chunkLoader";
